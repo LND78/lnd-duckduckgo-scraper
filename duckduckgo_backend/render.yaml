@@ -1,10 +1,10 @@
 services:
   - type: web
-    name: lnd-pure-duckduckgo-scraper-optimized
+    name: lnd-duckduckgo-cloudflare-dns-scraper
     env: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn --bind 0.0.0.0:$PORT app:app --timeout 180 --workers 1 --keep-alive 2 --max-requests 1000 --max-requests-jitter 50
+    startCommand: gunicorn --bind 0.0.0.0:$PORT app:app --timeout 200 --workers 1 --keep-alive 3 --max-requests 1200 --max-requests-jitter 100
     healthCheckPath: /api/health
     envVars:
       - key: PYTHON_VERSION
