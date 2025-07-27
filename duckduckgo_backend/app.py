@@ -146,7 +146,7 @@ def search_images_duckduckgo_pure(keyword, max_images=None, safe_search_off=True
                 
                 # FORCE DuckDuckGo attribution (override any Bing references)
                 if source == 'Bing':
-                    source = 'Google'  # Force DuckDuckGo attribution
+                    source = 'DuckDuckGo'  # Force DuckDuckGo attribution
                 
                 # Create filename from title or use default
                 safe_title = ''.join(c for c in title if c.isalnum() or c in (' ', '-', '_')).rstrip()
