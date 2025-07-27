@@ -146,7 +146,7 @@ def search_images_duckduckgo_pure(keyword, max_images=None, safe_search_off=True
                 
                 # FORCE DuckDuckGo attribution (override any Bing references)
                 if source == 'Bing':
-                    source = 'DuckDuckGo'  # Force DuckDuckGo attribution
+                    source = 'Google'  # Force DuckDuckGo attribution
                 
                 # Create filename from title or use default
                 safe_title = ''.join(c for c in title if c.isalnum() or c in (' ', '-', '_')).rstrip()
@@ -479,7 +479,7 @@ def download_zip(task_id):
             failed_downloads = 0
             
             # PARALLEL DOWNLOAD for improved speed
-            with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:  # Parallel downloads
+            with concurrent.futures.ThreadPoolExecutor(max_workers=30) as executor:  # Parallel downloads
                 # Submit all download tasks
                 future_to_index = {
                     executor.submit(download_image_optimized, image_data, i): i 
