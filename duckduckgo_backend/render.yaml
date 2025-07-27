@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: lnd-duckduckgo-scraper
+    name: lnd-duckduckgo-scraper-fixed
     env: python
     plan: free
     buildCommand: pip install -r requirements.txt

@@ -4,5 +4,5 @@ requests==2.31.0
 Werkzeug==2.3.7
 gunicorn==21.2.0
 schedule==1.2.0
-duckduckgo-search==4.2.0
+ddgs==9.4.3
 

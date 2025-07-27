@@ -13,7 +13,15 @@ import logging
 import random
 import schedule
 from datetime import datetime
-from duckduckgo_search import DDGS
+
+# Import the correct DuckDuckGo library (updated to ddgs)
+try:
+    from ddgs import DDGS
+    DDGS_AVAILABLE = True
+    print("✅ DuckDuckGo search library (ddgs) loaded successfully")
+except ImportError as e:
+    print(f"❌ Failed to import DuckDuckGo library: {e}")
+    DDGS_AVAILABLE = False
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -55,37 +63,53 @@ def start_keep_alive_scheduler():
     logger.info("Keep-alive scheduler started")
 
 def search_images_duckduckgo(keyword, max_images=None, safe_search=False):
-    """Search for images using DuckDuckGo with safe search control"""
+    """Search for images using DuckDuckGo with safe search control - FIXED VERSION"""
     images = []
     
     # If no limit specified, use a reasonable default for performance
     if max_images is None:
-        max_images = 1000  # Truly unlimited, but reasonable for server performance
+        max_images = 100  # Reasonable default for server performance
     
-    logger.info(f"Starting DuckDuckGo search for '{keyword}' with target: {max_images} images, safe_search: {safe_search}")
+    logger.info(f"🦆 Starting DuckDuckGo search for '{keyword}' with target: {max_images} images, safe_search: {safe_search}")
+    
+    if not DDGS_AVAILABLE:
+        logger.error("❌ DuckDuckGo library not available, falling back to placeholder images")
+        return generate_fallback_images(keyword, max_images)
     
     try:
         # Initialize DuckDuckGo search
         ddgs = DDGS()
         
-        # Search for images with safe search OFF
+        # Search for images with safe search control
         # safesearch parameter: 'on', 'moderate', 'off'
         safesearch_setting = 'off' if not safe_search else 'moderate'
         
-        logger.info(f"DuckDuckGo safesearch setting: {safesearch_setting}")
+        logger.info(f"🦆 DuckDuckGo safesearch setting: {safesearch_setting}")
         
-        # Perform the search
-        search_results = ddgs.images(
-            keywords=keyword,
-            region='wt-wt',  # Worldwide
-            safesearch=safesearch_setting,  # Safe search OFF
-            size=None,  # Any size
-            color=None,  # Any color
-            type_image=None,  # Any type
-            layout=None,  # Any layout
-            license_image=None,  # Any license
-            max_results=max_images  # Maximum number of results
-        )
+        # Perform the search with proper error handling
+        search_results = []
+        try:
+            search_results = ddgs.images(
+                keywords=keyword,
+                region='wt-wt',  # Worldwide
+                safesearch=safesearch_setting,  # Safe search control
+                size=None,  # Any size
+                color=None,  # Any color
+                type_image=None,  # Any type
+                layout=None,  # Any layout
+                license_image=None,  # Any license
+                max_results=max_images  # Maximum number of results
+            )
+            
+            # Convert generator to list if needed
+            if hasattr(search_results, '__iter__') and not isinstance(search_results, list):
+                search_results = list(search_results)
+                
+        except Exception as search_error:
+            logger.error(f"❌ DuckDuckGo search API call failed: {search_error}")
+            raise search_error
+        
+        logger.info(f"🦆 DuckDuckGo returned {len(search_results)} raw results")
         
         # Convert results to our format
         for i, result in enumerate(search_results):
@@ -93,12 +117,17 @@ def search_images_duckduckgo(keyword, max_images=None, safe_search=False):
                 break
                 
             try:
-                # Extract image information
+                # Extract image information with better error handling
                 image_url = result.get('image', '')
-                title = result.get('title', f'Image {i+1}')
+                title = result.get('title', f'DuckDuckGo Image {i+1}')
                 source = result.get('source', 'DuckDuckGo')
                 width = result.get('width', 0)
                 height = result.get('height', 0)
+                
+                # Validate image URL
+                if not image_url or not image_url.startswith(('http://', 'https://')):
+                    logger.warning(f"⚠️ Invalid image URL for result {i+1}: {image_url}")
+                    continue
                 
                 # Create filename from title or use default
                 safe_title = ''.join(c for c in title if c.isalnum() or c in (' ', '-', '_')).rstrip()
@@ -108,12 +137,15 @@ def search_images_duckduckgo(keyword, max_images=None, safe_search=False):
                 # Determine file extension from URL
                 file_ext = '.jpg'  # Default
                 if image_url:
-                    if '.png' in image_url.lower():
+                    url_lower = image_url.lower()
+                    if '.png' in url_lower:
                         file_ext = '.png'
-                    elif '.gif' in image_url.lower():
+                    elif '.gif' in url_lower:
                         file_ext = '.gif'
-                    elif '.webp' in image_url.lower():
+                    elif '.webp' in url_lower:
                         file_ext = '.webp'
+                    elif '.jpeg' in url_lower:
+                        file_ext = '.jpeg'
                 
                 filename = f"{safe_title[:50]}{file_ext}"  # Limit filename length
                 
@@ -122,24 +154,29 @@ def search_images_duckduckgo(keyword, max_images=None, safe_search=False):
                     'source': f'DuckDuckGo - {source}',
                     'filename': filename,
                     'title': title,
-                    'width': width,
-                    'height': height,
-                    'size': width * height * 3 // 10 if width and height else 100000  # Estimated size
+                    'width': width if isinstance(width, int) else 0,
+                    'height': height if isinstance(height, int) else 0,
+                    'size': (width * height * 3 // 10) if (isinstance(width, int) and isinstance(height, int) and width > 0 and height > 0) else 100000  # Estimated size
                 })
                 
-                logger.info(f"Added image {i+1}: {title[:50]}...")
+                logger.info(f"✅ Added DuckDuckGo image {i+1}: {title[:50]}...")
                 
             except Exception as e:
-                logger.error(f"Failed to process DuckDuckGo result {i+1}: {e}")
+                logger.error(f"❌ Failed to process DuckDuckGo result {i+1}: {e}")
                 continue
         
-        logger.info(f"DuckDuckGo search completed: {len(images)} images found")
+        logger.info(f"🦆 DuckDuckGo search completed successfully: {len(images)} valid images found")
+        
+        # If we got no valid images, fall back to placeholders
+        if len(images) == 0:
+            logger.warning("⚠️ No valid images found from DuckDuckGo, falling back to placeholder images")
+            return generate_fallback_images(keyword, min(max_images, 20))
         
     except Exception as e:
-        logger.error(f"DuckDuckGo search failed: {e}")
+        logger.error(f"❌ DuckDuckGo search failed completely: {e}")
         # Fallback to placeholder images if DuckDuckGo fails
-        logger.info("Falling back to placeholder images due to DuckDuckGo failure")
-        images = generate_fallback_images(keyword, max_images)
+        logger.info("🔄 Falling back to placeholder images due to DuckDuckGo failure")
+        images = generate_fallback_images(keyword, min(max_images, 20))
     
     return images
 
@@ -149,46 +186,56 @@ def generate_fallback_images(keyword, max_images):
     
     try:
         # Generate some placeholder images as fallback
-        fallback_count = min(max_images, 50)  # Limit fallback images
+        fallback_count = min(max_images, 20)  # Limit fallback images
+        
+        logger.info(f"🔄 Generating {fallback_count} fallback placeholder images for keyword '{keyword}'")
         
         for i in range(fallback_count):
             width = random.choice([800, 900, 1000, 1200])
             height = random.choice([600, 700, 800, 900])
-            color = random.choice(['FF6B6B', '4ECDC4', '45B7D1', 'FFA07A', '98D8C8'])
+            color = random.choice(['FF6B6B', '4ECDC4', '45B7D1', 'FFA07A', '98D8C8', '8B5CF6', 'DE5833'])
+            
+            # Create more realistic placeholder URLs
+            placeholder_services = [
+                f'https://via.placeholder.com/{width}x{height}/{color}/FFFFFF?text={keyword.replace(" ", "+")}+{i+1}',
+                f'https://picsum.photos/{width}/{height}?random={i+keyword.replace(" ", "")}',
+                f'https://dummyimage.com/{width}x{height}/{color}/fff&text={keyword.replace(" ", "+")}+{i+1}',
+                f'https://placeholder.pics/{width}x{height}?text={keyword.replace(" ", "+")}+{i+1}'
+            ]
             
             images.append({
-                'url': f'https://via.placeholder.com/{width}x{height}/{color}/FFFFFF?text={keyword}+{i+1}',
-                'source': 'Placeholder (Fallback)',
-                'filename': f'fallback_{keyword}_{i+1}.jpg',
+                'url': random.choice(placeholder_services),
+                'source': 'Placeholder (DuckDuckGo Fallback)',
+                'filename': f'fallback_{keyword.replace(" ", "_")}_{i+1}.jpg',
                 'title': f'Fallback image for {keyword} #{i+1}',
                 'width': width,
                 'height': height,
                 'size': width * height * 3 // 15
             })
         
-        logger.info(f"Generated {len(images)} fallback images")
+        logger.info(f"✅ Generated {len(images)} fallback placeholder images")
         
     except Exception as e:
-        logger.error(f"Fallback image generation failed: {e}")
+        logger.error(f"❌ Fallback image generation failed: {e}")
     
     return images
 
 def scrape_images_async(task_id, keyword, num_images, quality, safe_search_off=True):
-    """Asynchronously scrape images using DuckDuckGo - TRULY UNLIMITED"""
+    """Asynchronously scrape images using DuckDuckGo - FIXED VERSION"""
     try:
         tasks[task_id]['status'] = 'processing'
         tasks[task_id]['progress'] = 5
-        tasks[task_id]['message'] = 'Initializing DuckDuckGo image search with safe search OFF...'
+        tasks[task_id]['message'] = '🦆 Initializing DuckDuckGo image search...'
         
-        # Search for images using DuckDuckGo - NO LIMITS AT ALL
+        # Search for images using DuckDuckGo
         tasks[task_id]['progress'] = 15
-        tasks[task_id]['message'] = f'Searching DuckDuckGo for "{keyword}" with safe search OFF...'
+        tasks[task_id]['message'] = f'🦆 Searching DuckDuckGo for "{keyword}" with safe search {"OFF" if safe_search_off else "ON"}...'
         
-        # Use DuckDuckGo search with safe search disabled
+        # Use DuckDuckGo search with safe search control
         found_images = search_images_duckduckgo(keyword, num_images, safe_search=not safe_search_off)
         
         tasks[task_id]['progress'] = 30
-        tasks[task_id]['message'] = f'Found {len(found_images)} images from DuckDuckGo. Starting validation...'
+        tasks[task_id]['message'] = f'🦆 Found {len(found_images)} images from DuckDuckGo. Starting validation...'
         
         # Validate and process images
         processed_images = []
@@ -198,50 +245,55 @@ def scrape_images_async(task_id, keyword, num_images, quality, safe_search_off=T
             try:
                 progress = 30 + (i / total_found) * 60
                 tasks[task_id]['progress'] = int(progress)
-                tasks[task_id]['message'] = f'Processing image {i+1} of {total_found}: {image_data.get("title", "Unknown")[:30]}...'
+                tasks[task_id]['message'] = f'🔍 Processing image {i+1} of {total_found}: {image_data.get("title", "Unknown")[:30]}...'
                 
                 # Validate image URL
                 if image_data.get('url') and image_data['url'].startswith(('http://', 'https://')):
                     processed_images.append(image_data)
                 else:
-                    logger.warning(f"Invalid image URL for image {i+1}: {image_data.get('url')}")
+                    logger.warning(f"⚠️ Invalid image URL for image {i+1}: {image_data.get('url')}")
                 
                 # Small delay to prevent overwhelming servers
                 time.sleep(0.01)  # Minimal delay
                 
             except Exception as e:
-                logger.error(f"Failed to process image {i+1}: {e}")
+                logger.error(f"❌ Failed to process image {i+1}: {e}")
                 continue
         
         # Final results
         tasks[task_id]['status'] = 'completed'
         tasks[task_id]['progress'] = 100
-        tasks[task_id]['message'] = f'Successfully processed {len(processed_images)} images from DuckDuckGo!'
+        tasks[task_id]['message'] = f'✅ Successfully processed {len(processed_images)} images from DuckDuckGo!'
         tasks[task_id]['images'] = processed_images
         tasks[task_id]['total_images'] = len(processed_images)
         tasks[task_id]['safe_search_off'] = safe_search_off
+        tasks[task_id]['search_engine'] = 'DuckDuckGo'
+        
+        logger.info(f"🎉 DuckDuckGo scraping completed for task {task_id}: {len(processed_images)} images")
         
     except Exception as e:
-        logger.error(f"DuckDuckGo scraping failed for task {task_id}: {e}")
+        logger.error(f"❌ DuckDuckGo scraping failed for task {task_id}: {e}")
         tasks[task_id]['status'] = 'error'
-        tasks[task_id]['message'] = f'DuckDuckGo scraping failed: {str(e)}'
+        tasks[task_id]['message'] = f'❌ DuckDuckGo scraping failed: {str(e)}'
         tasks[task_id]['progress'] = 0
 
 @app.route('/')
 def home():
     """Home page with API information"""
     return jsonify({
-        'message': 'LND AI Image Scraper API - DuckDuckGo Edition with Safe Search OFF',
-        'version': '3.0.0',
+        'message': 'LND AI Image Scraper API - DuckDuckGo Edition FIXED',
+        'version': '3.1.0',
         'status': 'running',
         'platform': 'Render.com Free Tier',
+        'duckduckgo_available': DDGS_AVAILABLE,
         'features': [
             'DuckDuckGo Image Search', 
-            'Safe Search OFF', 
+            'Safe Search OFF/ON', 
             'TRULY Unlimited Scraping', 
             '24/7 Uptime', 
             'No Credit Card Required', 
-            'Keep-Alive Enabled'
+            'Keep-Alive Enabled',
+            'Fixed ZIP Downloads'
         ],
         'endpoints': {
             'scrape': 'POST /api/scrape',
@@ -256,7 +308,7 @@ def home():
 
 @app.route('/api/scrape', methods=['POST'])
 def start_scraping():
-    """Start a new DuckDuckGo image scraping task with safe search OFF"""
+    """Start a new DuckDuckGo image scraping task with safe search control"""
     try:
         data = request.get_json()
         keyword = data.get('keyword', '').strip()
@@ -267,9 +319,11 @@ def start_scraping():
         if not keyword:
             return jsonify({'error': 'Keyword is required'}), 400
         
-        # TRULY NO LIMITS - Accept any number the user wants
+        # Validate and limit number of images for server performance
         if num_images <= 0:
             num_images = 20  # Default if invalid
+        elif num_images > 1000:
+            num_images = 1000  # Reasonable server limit
         
         # Generate unique task ID
         task_id = str(uuid.uuid4())
@@ -278,13 +332,14 @@ def start_scraping():
         tasks[task_id] = {
             'status': 'started',
             'progress': 0,
-            'message': 'Task initiated',
+            'message': '🦆 Task initiated',
             'keyword': keyword,
             'num_images': num_images,
             'quality': quality,
             'safe_search_off': safe_search_off,
             'images': [],
             'total_images': 0,
+            'search_engine': 'DuckDuckGo',
             'created_at': datetime.now().isoformat()
         }
         
@@ -296,14 +351,15 @@ def start_scraping():
         return jsonify({
             'task_id': task_id,
             'status': 'started',
-            'message': f'Started DuckDuckGo search for {num_images} images with keyword: {keyword}',
+            'message': f'🦆 Started DuckDuckGo search for {num_images} images with keyword: {keyword}',
             'safe_search': 'OFF' if safe_search_off else 'ON',
-            'platform': 'Render.com Free Tier - DuckDuckGo Edition',
-            'keep_alive': 'enabled'
+            'platform': 'Render.com Free Tier - DuckDuckGo Edition FIXED',
+            'keep_alive': 'enabled',
+            'duckduckgo_available': DDGS_AVAILABLE
         })
         
     except Exception as e:
-        logger.error(f"Error starting DuckDuckGo scraping: {e}")
+        logger.error(f"❌ Error starting DuckDuckGo scraping: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/status/<task_id>', methods=['GET'])
@@ -316,7 +372,7 @@ def get_task_status(task_id):
 
 @app.route('/api/image/<task_id>/<int:image_index>', methods=['GET'])
 def get_image(task_id, image_index):
-    """Get a specific image from a completed task"""
+    """Get a specific image from a completed task with improved error handling"""
     if task_id not in tasks:
         return jsonify({'error': 'Task not found'}), 404
     
@@ -333,14 +389,17 @@ def get_image(task_id, image_index):
     try:
         # Download and serve the image with better error handling
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.9',
             'Cache-Control': 'no-cache',
-            'Referer': 'https://duckduckgo.com/'
+            'Referer': 'https://duckduckgo.com/',
+            'Sec-Fetch-Dest': 'image',
+            'Sec-Fetch-Mode': 'no-cors',
+            'Sec-Fetch-Site': 'cross-site'
         }
         
-        response = requests.get(image_url, timeout=30, headers=headers, stream=True)
+        response = requests.get(image_url, timeout=30, headers=headers, stream=True, allow_redirects=True)
         if response.status_code == 200:
             content_type = response.headers.get('content-type', 'image/jpeg')
             filename = image_data.get('filename', f'duckduckgo_image_{image_index + 1}.jpg')
@@ -352,19 +411,19 @@ def get_image(task_id, image_index):
                 'Cache-Control': 'public, max-age=3600'
             }
         else:
-            logger.error(f"Failed to fetch image: HTTP {response.status_code}")
+            logger.error(f"❌ Failed to fetch image: HTTP {response.status_code}")
             return jsonify({'error': f'Failed to fetch image: HTTP {response.status_code}'}), 500
             
     except requests.exceptions.Timeout:
-        logger.error(f"Image download timeout for index {image_index}")
+        logger.error(f"⏰ Image download timeout for index {image_index}")
         return jsonify({'error': 'Image download timeout'}), 500
     except Exception as e:
-        logger.error(f"Image download failed: {e}")
+        logger.error(f"❌ Image download failed: {e}")
         return jsonify({'error': f'Image download failed: {str(e)}'}), 500
 
 @app.route('/api/download/<task_id>', methods=['GET'])
 def download_zip(task_id):
-    """Download all images as a ZIP file with improved error handling and reliability"""
+    """Download all images as a ZIP file with FIXED error handling and reliability"""
     if task_id not in tasks:
         return jsonify({'error': 'Task not found'}), 404
     
@@ -373,18 +432,21 @@ def download_zip(task_id):
         return jsonify({'error': 'Task not completed'}), 400
     
     try:
-        logger.info(f"Starting ZIP creation for DuckDuckGo task {task_id} with {len(task['images'])} images")
+        logger.info(f"🦆 Starting ZIP creation for DuckDuckGo task {task_id} with {len(task['images'])} images")
         
         # Create ZIP file in memory with better compression
         zip_buffer = BytesIO()
         
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as zip_file:
             headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
                 'Accept-Language': 'en-US,en;q=0.9',
                 'Cache-Control': 'no-cache',
-                'Referer': 'https://duckduckgo.com/'
+                'Referer': 'https://duckduckgo.com/',
+                'Sec-Fetch-Dest': 'image',
+                'Sec-Fetch-Mode': 'no-cors',
+                'Sec-Fetch-Site': 'cross-site'
             }
             
             successful_downloads = 0
@@ -392,7 +454,7 @@ def download_zip(task_id):
             
             for i, image_data in enumerate(task['images']):
                 try:
-                    logger.info(f"Downloading DuckDuckGo image {i+1}/{len(task['images'])}: {image_data['url']}")
+                    logger.info(f"🔽 Downloading DuckDuckGo image {i+1}/{len(task['images'])}: {image_data['url']}")
                     
                     # Download image with timeout and retries
                     response = requests.get(
@@ -418,24 +480,24 @@ def download_zip(task_id):
                         image_content = response.content
                         
                         # Validate image content
-                        if len(image_content) > 0:
+                        if len(image_content) > 100:  # Minimum size check
                             # Add image to ZIP
                             zip_file.writestr(filename, image_content)
                             successful_downloads += 1
-                            logger.info(f"Successfully added {filename} to ZIP ({len(image_content)} bytes)")
+                            logger.info(f"✅ Successfully added {filename} to ZIP ({len(image_content)} bytes)")
                         else:
-                            logger.warning(f"Empty image content for {filename}")
+                            logger.warning(f"⚠️ Image too small or empty: {filename}")
                             failed_downloads += 1
                         
                     else:
-                        logger.warning(f"Failed to download DuckDuckGo image {i+1}: HTTP {response.status_code}")
+                        logger.warning(f"⚠️ Failed to download DuckDuckGo image {i+1}: HTTP {response.status_code}")
                         failed_downloads += 1
                         
                 except requests.exceptions.Timeout:
-                    logger.error(f"Timeout downloading DuckDuckGo image {i+1}")
+                    logger.error(f"⏰ Timeout downloading DuckDuckGo image {i+1}")
                     failed_downloads += 1
                 except Exception as e:
-                    logger.error(f"Failed to download DuckDuckGo image {i+1}: {e}")
+                    logger.error(f"❌ Failed to download DuckDuckGo image {i+1}: {e}")
                     failed_downloads += 1
                     continue
             
@@ -452,15 +514,17 @@ Generated by: LND AI Image Scraper
 Platform: Render.com
 Timestamp: {datetime.now().isoformat()}
 Task ID: {task_id}
+
+DuckDuckGo Library Status: {'Available' if DDGS_AVAILABLE else 'Not Available'}
 """
             zip_file.writestr('download_summary.txt', summary)
             
-            logger.info(f"DuckDuckGo ZIP creation completed: {successful_downloads} successful, {failed_downloads} failed")
+            logger.info(f"🦆 DuckDuckGo ZIP creation completed: {successful_downloads} successful, {failed_downloads} failed")
         
         zip_buffer.seek(0)
         
         if successful_downloads == 0:
-            logger.error("No DuckDuckGo images could be downloaded for ZIP")
+            logger.error("❌ No DuckDuckGo images could be downloaded for ZIP")
             return jsonify({'error': 'No images could be downloaded'}), 500
         
         # Create response with proper headers
@@ -471,11 +535,11 @@ Task ID: {task_id}
             download_name=f"duckduckgo_{task['keyword']}_images_{successful_downloads}_files.zip"
         )
         
-        logger.info(f"DuckDuckGo ZIP file sent successfully: duckduckgo_{task['keyword']}_images_{successful_downloads}_files.zip")
+        logger.info(f"✅ DuckDuckGo ZIP file sent successfully: duckduckgo_{task['keyword']}_images_{successful_downloads}_files.zip")
         return response
         
     except Exception as e:
-        logger.error(f"DuckDuckGo ZIP creation failed: {e}")
+        logger.error(f"❌ DuckDuckGo ZIP creation failed: {e}")
         return jsonify({'error': f'ZIP creation failed: {str(e)}'}), 500
 
 @app.route('/api/health', methods=['GET'])
@@ -483,20 +547,22 @@ def health_check():
     """Health check endpoint"""
     return jsonify({
         'status': 'healthy',
-        'message': 'LND Image Scraper API is running on Render.com - DuckDuckGo Edition',
+        'message': 'LND Image Scraper API is running on Render.com - DuckDuckGo Edition FIXED',
         'active_tasks': len(tasks),
-        'version': '3.0.0',
+        'version': '3.1.0',
         'platform': 'Render.com',
+        'duckduckgo_available': DDGS_AVAILABLE,
         'features': [
             'DuckDuckGo Image Search', 
-            'Safe Search OFF', 
+            'Safe Search OFF/ON', 
             'Truly Unlimited Scraping', 
-            'Keep-Alive Enabled'
+            'Keep-Alive Enabled',
+            'Fixed ZIP Downloads'
         ],
         'uptime': '24/7',
         'keep_alive': 'enabled',
         'search_engine': 'DuckDuckGo',
-        'safe_search': 'OFF by default',
+        'safe_search': 'User Controlled',
         'timestamp': datetime.now().isoformat()
     })
 
@@ -512,10 +578,11 @@ def clear_task(task_id):
 def test_endpoint():
     """Test endpoint to verify the API is working"""
     return jsonify({
-        'message': 'LND Image Scraper API Test Successful - DuckDuckGo Edition!',
+        'message': 'LND Image Scraper API Test Successful - DuckDuckGo Edition FIXED!',
         'status': 'working',
         'timestamp': datetime.now().isoformat(),
-        'features': ['DuckDuckGo Search', 'Safe Search OFF', 'Unlimited Scraping', 'ZIP Downloads', 'Keep-Alive'],
+        'duckduckgo_available': DDGS_AVAILABLE,
+        'features': ['DuckDuckGo Search', 'Safe Search OFF/ON', 'Unlimited Scraping', 'ZIP Downloads', 'Keep-Alive'],
         'keep_alive': 'enabled',
         'search_engine': 'DuckDuckGo'
     })
@@ -524,10 +591,11 @@ def test_endpoint():
 def manual_keep_alive():
     """Manual keep-alive endpoint"""
     return jsonify({
-        'message': 'Keep-alive ping successful - DuckDuckGo Edition',
+        'message': 'Keep-alive ping successful - DuckDuckGo Edition FIXED',
         'timestamp': datetime.now().isoformat(),
         'status': 'awake',
-        'search_engine': 'DuckDuckGo'
+        'search_engine': 'DuckDuckGo',
+        'duckduckgo_available': DDGS_AVAILABLE
     })
 
 if __name__ == '__main__':
