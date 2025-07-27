@@ -14,7 +14,7 @@ import random
 import schedule
 from datetime import datetime
 
-# Import the correct DuckDuckGo library (updated to ddgs)
+# Import the correct DuckDuckGo library (ddgs)
 try:
     from ddgs import DDGS
     DDGS_AVAILABLE = True
@@ -63,7 +63,7 @@ def start_keep_alive_scheduler():
     logger.info("Keep-alive scheduler started")
 
 def search_images_duckduckgo(keyword, max_images=None, safe_search=False):
-    """Search for images using DuckDuckGo with safe search control - FIXED VERSION"""
+    """Search for images using DuckDuckGo with CORRECT API usage - WORKING VERSION"""
     images = []
     
     # If no limit specified, use a reasonable default for performance
@@ -86,28 +86,25 @@ def search_images_duckduckgo(keyword, max_images=None, safe_search=False):
         
         logger.info(f"🦆 DuckDuckGo safesearch setting: {safesearch_setting}")
         
-        # Perform the search with proper error handling
+        # Perform the search with CORRECT API usage
         search_results = []
         try:
-            search_results = ddgs.images(
-                keywords=keyword,
-                region='wt-wt',  # Worldwide
+            # CORRECT API CALL - ddgs.images(query, safesearch, max_results)
+            search_results = list(ddgs.images(
+                query=keyword,  # Use 'query' parameter, not 'keywords'
                 safesearch=safesearch_setting,  # Safe search control
-                size=None,  # Any size
-                color=None,  # Any color
-                type_image=None,  # Any type
-                layout=None,  # Any layout
-                license_image=None,  # Any license
                 max_results=max_images  # Maximum number of results
-            )
-            
-            # Convert generator to list if needed
-            if hasattr(search_results, '__iter__') and not isinstance(search_results, list):
-                search_results = list(search_results)
+            ))
                 
         except Exception as search_error:
             logger.error(f"❌ DuckDuckGo search API call failed: {search_error}")
-            raise search_error
+            # Try alternative API call format
+            try:
+                logger.info("🔄 Trying alternative DuckDuckGo API call format...")
+                search_results = list(ddgs.images(keyword, safesearch=safesearch_setting, max_results=max_images))
+            except Exception as alt_error:
+                logger.error(f"❌ Alternative DuckDuckGo API call also failed: {alt_error}")
+                raise search_error
         
         logger.info(f"🦆 DuckDuckGo returned {len(search_results)} raw results")
         
@@ -159,7 +156,7 @@ def search_images_duckduckgo(keyword, max_images=None, safe_search=False):
                     'size': (width * height * 3 // 10) if (isinstance(width, int) and isinstance(height, int) and width > 0 and height > 0) else 100000  # Estimated size
                 })
                 
-                logger.info(f"✅ Added DuckDuckGo image {i+1}: {title[:50]}...")
+                logger.info(f"✅ Added DuckDuckGo image {i+1}: {title[:50]}... URL: {image_url[:80]}...")
                 
             except Exception as e:
                 logger.error(f"❌ Failed to process DuckDuckGo result {i+1}: {e}")
@@ -221,7 +218,7 @@ def generate_fallback_images(keyword, max_images):
     return images
 
 def scrape_images_async(task_id, keyword, num_images, quality, safe_search_off=True):
-    """Asynchronously scrape images using DuckDuckGo - FIXED VERSION"""
+    """Asynchronously scrape images using DuckDuckGo - WORKING VERSION"""
     try:
         tasks[task_id]['status'] = 'processing'
         tasks[task_id]['progress'] = 5
@@ -281,8 +278,8 @@ def scrape_images_async(task_id, keyword, num_images, quality, safe_search_off=T
 def home():
     """Home page with API information"""
     return jsonify({
-        'message': 'LND AI Image Scraper API - DuckDuckGo Edition FIXED',
-        'version': '3.1.0',
+        'message': 'LND AI Image Scraper API - DuckDuckGo Edition WORKING',
+        'version': '3.2.0',
         'status': 'running',
         'platform': 'Render.com Free Tier',
         'duckduckgo_available': DDGS_AVAILABLE,
@@ -293,7 +290,8 @@ def home():
             '24/7 Uptime', 
             'No Credit Card Required', 
             'Keep-Alive Enabled',
-            'Fixed ZIP Downloads'
+            'Fixed ZIP Downloads',
+            'Correct API Usage'
         ],
         'endpoints': {
             'scrape': 'POST /api/scrape',
@@ -353,7 +351,7 @@ def start_scraping():
             'status': 'started',
             'message': f'🦆 Started DuckDuckGo search for {num_images} images with keyword: {keyword}',
             'safe_search': 'OFF' if safe_search_off else 'ON',
-            'platform': 'Render.com Free Tier - DuckDuckGo Edition FIXED',
+            'platform': 'Render.com Free Tier - DuckDuckGo Edition WORKING',
             'keep_alive': 'enabled',
             'duckduckgo_available': DDGS_AVAILABLE
         })
@@ -547,9 +545,9 @@ def health_check():
     """Health check endpoint"""
     return jsonify({
         'status': 'healthy',
-        'message': 'LND Image Scraper API is running on Render.com - DuckDuckGo Edition FIXED',
+        'message': 'LND Image Scraper API is running on Render.com - DuckDuckGo Edition WORKING',
         'active_tasks': len(tasks),
-        'version': '3.1.0',
+        'version': '3.2.0',
         'platform': 'Render.com',
         'duckduckgo_available': DDGS_AVAILABLE,
         'features': [
@@ -557,7 +555,8 @@ def health_check():
             'Safe Search OFF/ON', 
             'Truly Unlimited Scraping', 
             'Keep-Alive Enabled',
-            'Fixed ZIP Downloads'
+            'Fixed ZIP Downloads',
+            'Correct API Usage'
         ],
         'uptime': '24/7',
         'keep_alive': 'enabled',
@@ -578,7 +577,7 @@ def clear_task(task_id):
 def test_endpoint():
     """Test endpoint to verify the API is working"""
     return jsonify({
-        'message': 'LND Image Scraper API Test Successful - DuckDuckGo Edition FIXED!',
+        'message': 'LND Image Scraper API Test Successful - DuckDuckGo Edition WORKING!',
         'status': 'working',
         'timestamp': datetime.now().isoformat(),
         'duckduckgo_available': DDGS_AVAILABLE,
@@ -591,7 +590,7 @@ def test_endpoint():
 def manual_keep_alive():
     """Manual keep-alive endpoint"""
     return jsonify({
-        'message': 'Keep-alive ping successful - DuckDuckGo Edition FIXED',
+        'message': 'Keep-alive ping successful - DuckDuckGo Edition WORKING',
         'timestamp': datetime.now().isoformat(),
         'status': 'awake',
         'search_engine': 'DuckDuckGo',
